@@ -5,9 +5,6 @@ Purpose:
 --------
 Explore the CHAOS dataset structure and collect metadata.
 
-This module is intentionally independent from the dataset loader.
-It helps verify dataset integrity before preprocessing or training.
-
 Author: Snehashis Ratna
 Project: Medical Image Segmentation Thesis
 """
@@ -16,28 +13,52 @@ from pathlib import Path
 
 
 class DatasetExplorer:
-    """
-    Explore the CHAOS dataset directory structure.
-    """
 
     def __init__(self, dataset_root: str):
         self.dataset_root = Path(dataset_root)
 
-    def print_structure(self):
+        self.ct_path = self.dataset_root / "CT"
+        self.mr_path = self.dataset_root / "MR"
+
+    def count_patients(self, modality_path: Path) -> int:
         """
-        Print the top-level directory structure.
+        Count patient folders inside a modality.
         """
 
-        print(f"\nDataset Root: {self.dataset_root}\n")
+        if not modality_path.exists():
+            return 0
 
-        for item in sorted(self.dataset_root.iterdir()):
-            print(item.name)
+        return len(
+            [
+                folder
+                for folder in modality_path.iterdir()
+                if folder.is_dir()
+            ]
+        )
+
+    def print_summary(self):
+
+        ct_patients = self.count_patients(self.ct_path)
+        mr_patients = self.count_patients(self.mr_path)
+
+        print("=" * 50)
+        print("CHAOS DATASET SUMMARY")
+        print("=" * 50)
+
+        print(f"Dataset Root : {self.dataset_root}")
+        print()
+
+        print(f"CT Patients  : {ct_patients}")
+        print(f"MR Patients  : {mr_patients}")
+        print(f"Total        : {ct_patients + mr_patients}")
+
+        print("=" * 50)
 
 
 if __name__ == "__main__":
 
-    dataset = DatasetExplorer(
+    explorer = DatasetExplorer(
         dataset_root="data/raw/CHAOS_Train_Sets/Train_Sets"
     )
 
-    dataset.print_structure()
+    explorer.print_summary()
