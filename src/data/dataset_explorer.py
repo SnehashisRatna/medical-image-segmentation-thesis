@@ -17,8 +17,9 @@ Project: Medical Image Segmentation Thesis
 """
 
 from pathlib import Path
-import pydicom
-
+import matplotlib.pyplot as plt
+import numpy as np
+from src.data.dicom_reader import DICOMReader
 
 class DatasetExplorer:
     """
@@ -162,6 +163,50 @@ class DatasetExplorer:
 
         print("=" * 60)
 
+    def visualize_first_ct_slice(self):
+        """
+        Read and visualize the first CT slice.
+        """
+
+        patient_folders = sorted(
+        folder
+        for folder in self.ct_path.iterdir()
+        if folder.is_dir()
+        )
+
+        first_patient = patient_folders[0]
+
+        dicom_folder = first_patient / "DICOM_anon"
+
+        first_dicom = sorted(dicom_folder.glob("*.dcm"))[0]
+
+        ds = pydicom.dcmread(first_dicom)
+ 
+        image = ds.pixel_array.astype(np.float32)
+
+        print("\n" + "=" * 60)
+        print("IMAGE INFORMATION")
+        print("=" * 60)
+
+        print(f"Shape       : {image.shape}")
+        print(f"Data Type   : {image.dtype}")    
+        print(f"Minimum HU  : {image.min()}")
+        print(f"Maximum HU  : {image.max()}")
+        print(f"Mean        : {image.mean():.2f}")
+
+        print("=" * 60)
+
+        plt.figure(figsize=(6, 6))
+
+        plt.imshow(image, cmap="gray")
+
+        plt.title(f"CT Patient {first_patient.name}")
+
+        plt.axis("off")
+
+        plt.show()
+
+
 
 def main():
 
@@ -173,6 +218,7 @@ def main():
 
     explorer.read_first_ct_metadata()
 
+    explorer.visualize_first_ct_slice()
 
 if __name__ == "__main__":
     main()
