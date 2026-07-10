@@ -39,6 +39,8 @@ class DatasetExplorer:
         self.ct_path = self.dataset_root / "CT"
         self.mr_path = self.dataset_root / "MR"
 
+        self.reader = DICOMReader()
+
     def count_patients(self, modality_path: Path) -> int:
         """
         Count patient folders.
@@ -133,7 +135,7 @@ class DatasetExplorer:
         # -----------------------------
         # Read metadata
         # -----------------------------
-        ds = pydicom.dcmread(first_dicom)
+        metadata = self.reader.read_metadata(first_dicom)
 
         print("\n" + "=" * 60)
         print("FIRST CT DICOM METADATA")
@@ -143,23 +145,28 @@ class DatasetExplorer:
         print(f"DICOM File          : {first_dicom.name}")
         print()
 
-        print(f"Modality            : {ds.Modality}")
-        print(f"Manufacturer        : {ds.Manufacturer}")
+        print(f"Modality            : {metadata['modality']}")
+        print(f"Manufacturer        : {metadata['manufacturer']}")
 
         print()
 
-        print(f"Rows                : {ds.Rows}")
-        print(f"Columns             : {ds.Columns}")
+        print(f"Rows                : {metadata['rows']}")
+        print(f"Columns             : {metadata['columns']}")
 
         print()
 
-        print(f"Pixel Spacing (mm)  : {ds.PixelSpacing}")
-        print(f"Slice Thickness(mm) : {ds.SliceThickness}")
+        print(f"Pixel Spacing (mm)  : {metadata['pixel_spacing']}")
+        print(f"Slice Thickness(mm) : {metadata['slice_thickness']}")
 
         print()
 
-        print(f"Bits Allocated      : {ds.BitsAllocated}")
-        print(f"Bits Stored         : {ds.BitsStored}")
+        print(f"Bits Allocated      : {metadata['bits_allocated']}")
+        print(f"Bits Stored         : {metadata['bits_stored']}")
+
+        print()
+
+        print(f"Rescale Slope       : {metadata['rescale_slope']}")
+        print(f"Rescale Intercept   : {metadata['rescale_intercept']}")
 
         print("=" * 60)
 
@@ -180,19 +187,20 @@ class DatasetExplorer:
 
         first_dicom = sorted(dicom_folder.glob("*.dcm"))[0]
 
-        ds = pydicom.dcmread(first_dicom)
- 
-        image = ds.pixel_array.astype(np.float32)
+        image = self.reader.read_image(first_dicom)
+
+        stats = self.reader.image_statistics(image)
 
         print("\n" + "=" * 60)
         print("IMAGE INFORMATION")
         print("=" * 60)
 
-        print(f"Shape       : {image.shape}")
-        print(f"Data Type   : {image.dtype}")    
-        print(f"Minimum HU  : {image.min()}")
-        print(f"Maximum HU  : {image.max()}")
-        print(f"Mean        : {image.mean():.2f}")
+        print(f"Shape       : {stats['shape']}")
+        print(f"Data Type   : {stats['dtype']}")
+        print(f"Minimum     : {stats['min']}")
+        print(f"Maximum     : {stats['max']}")
+        print(f"Mean        : {stats['mean']:.2f}")
+        print(f"Std Dev     : {stats['std']:.2f}")
 
         print("=" * 60)
 
