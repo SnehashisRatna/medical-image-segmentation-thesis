@@ -81,7 +81,7 @@ class MetadataScanner:
 
             self.records.append(
                 {
-                    "Patient": metadata["patient_id"] or patient.name,
+                    "Patient_ID": metadata["patient_id"] or patient.name,
                     "Modality": "CT",
                     "Sequence": "CT",
                     "Slices": len(dicom_files),
@@ -96,12 +96,70 @@ class MetadataScanner:
             )
 
     def _scan_mr(self) -> None:
-        """Scan MR patient folders when MR sequence handling is implemented."""
+        """Scan MR patient folders and collect sequence metadata."""
 
-        # TODO: CHAOS MR patients contain T1DUAL/DICOM_anon/InPhase and
-        # T1DUAL/DICOM_anon/OutPhase, plus T2SPIR/DICOM_anon. Scan each
-        # sequence separately and record its metadata and slice count.
-        pass
+        mr_root = self.dataset_root / "MR"
+
+        if not mr_root.exists():
+            return
+
+        for patient in sorted(mr_root.iterdir()):
+            if not patient.is_dir():
+                continue
+
+            self._scan_t1dual(patient)
+            self._scan_t2spir(patient)
+
+    def _scan_t1dual(self, patient: Path) -> None:
+        """Scan the in-phase and out-phase T1DUAL sequences for a patient."""
+
+        t1dual_root = patient / "T1DUAL" / "DICOM_anon"
+        self._scan_mr_sequence(t1dual_root / "InPhase", patient, "T1DUAL_IN")
+        self._scan_mr_sequence(t1dual_root / "OutPhase", patient, "T1DUAL_OUT")
+
+    def _scan_t2spir(self, patient: Path) -> None:
+        """Scan the T2SPIR sequence for a patient."""
+
+        self._scan_mr_sequence(
+            patient / "T2SPIR" / "DICOM_anon", patient, "T2SPIR"
+        )
+
+    def _scan_mr_sequence(
+        self, dicom_folder: Path, patient: Path, sequence: str
+    ) -> None:
+        """Collect metadata for one MR sequence.
+
+        Args:
+            dicom_folder: Directory containing the sequence DICOM files.
+            patient: Directory for the current patient.
+            sequence: Label to assign to the scanned sequence.
+        """
+
+        if not dicom_folder.exists():
+            return
+
+        dicom_files = sorted(dicom_folder.glob("*.dcm"))
+
+        if not dicom_files:
+            return
+
+        metadata = self.reader.read_metadata(dicom_files[0])
+
+        self.records.append(
+            {
+                "Patient_ID": metadata["patient_id"] or patient.name,
+                "Modality": "MR",
+                "Sequence": sequence,
+                "Slices": len(dicom_files),
+                "Rows": metadata["rows"],
+                "Columns": metadata["columns"],
+                "Pixel Spacing": metadata["pixel_spacing"],
+                "Slice Thickness": metadata["slice_thickness"],
+                "Bits Stored": metadata["bits_stored"],
+                "Rescale Slope": metadata["rescale_slope"],
+                "Rescale Intercept": metadata["rescale_intercept"],
+            }
+        )
 
     def to_dataframe(self) -> pd.DataFrame:
 
