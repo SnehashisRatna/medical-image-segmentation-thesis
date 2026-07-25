@@ -37,3 +37,7 @@ results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test-generated outputs
+tests/output/**
+!tests/output/.gitkeep

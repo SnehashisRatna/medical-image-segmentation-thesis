@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TypedDict
 
@@ -54,7 +55,7 @@ def visualizer() -> ComparisonVisualizer:
 
 
 @pytest.fixture(autouse=True)
-def close_figures() -> None:
+def close_figures() -> Iterator[None]:
     """Close Matplotlib figures created during a test."""
     yield
     plt.close("all")
