@@ -354,3 +354,216 @@ def test_render_slice_rejects_out_of_range_slice_index(
     """Negative and too-large slice indices are rejected."""
     with pytest.raises(ValueError):
         visualizer.render_slice(sample_volume, slice_index)
+
+
+def test_render_delegates_to_axial_slice_rendering(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+) -> None:
+    """The BaseVisualizer render contract delegates to axial slice rendering."""
+    figure = visualizer.render(sample_volume, 4)
+
+    assert isinstance(figure, Figure)
+    assert len(figure.axes) == 1
+    assert figure.axes[0].get_title() == "Axial Slice"
+
+
+@pytest.mark.parametrize("slice_index", ["4", 4.5, True])
+def test_render_slice_rejects_non_integer_slice_index(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    slice_index: object,
+) -> None:
+    """String, float, and boolean slice indices are rejected."""
+    with pytest.raises(TypeError):
+        visualizer.render_slice(
+            sample_volume,
+            slice_index,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    ("indices", "expected_message"),
+    [
+        ({"axial_index": -1}, "axial"),
+        ({"coronal_index": 100}, "coronal"),
+        ({"sagittal_index": 100}, "sagittal"),
+    ],
+)
+def test_render_multiplanar_rejects_out_of_range_indices(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    indices: dict[str, int],
+    expected_message: str,
+) -> None:
+    """Multiplanar rendering rejects indices outside their plane ranges."""
+    with pytest.raises(ValueError, match=expected_message):
+        visualizer.render_multiplanar(sample_volume, **indices)
+
+
+@pytest.mark.parametrize(
+    "indices",
+    [
+        {"axial_index": "5"},
+        {"coronal_index": 4.5},
+    ],
+)
+def test_render_multiplanar_rejects_non_integer_indices(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    indices: dict[str, object],
+) -> None:
+    """Multiplanar rendering rejects non-integer supplied indices."""
+    with pytest.raises(TypeError):
+        visualizer.render_multiplanar(
+            sample_volume,
+            **indices,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("invalid_figure", [None, "figure"])
+def test_save_rejects_invalid_figure(
+    visualizer: VolumeVisualizer,
+    tmp_path: Path,
+    invalid_figure: object,
+) -> None:
+    """Saving rejects values that are not Matplotlib figures."""
+    with pytest.raises(TypeError):
+        visualizer.save(
+            invalid_figure,  # type: ignore[arg-type]
+            str(tmp_path / "volume.png"),
+        )
+
+
+@pytest.mark.parametrize("invalid_path", [123, None])
+def test_save_rejects_invalid_path(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    invalid_path: object,
+) -> None:
+    """Saving rejects destination paths that are not strings."""
+    figure = visualizer.render_slice(sample_volume, 4)
+
+    with pytest.raises(TypeError):
+        visualizer.save(figure, invalid_path)  # type: ignore[arg-type]
+
+
+def test_render_mask_displays_selected_axial_slices(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    sample_mask: np.ndarray,
+) -> None:
+    """Mask rendering displays image and mask data from the selected slice."""
+    slice_index = 4
+    figure = visualizer.render_mask(sample_volume, sample_mask, slice_index)
+    image_slice = figure.axes[0].get_images()[0].get_array()
+    mask_slice = figure.axes[1].get_images()[0].get_array()
+
+    assert np.array_equal(image_slice, sample_volume[slice_index])
+    assert np.array_equal(mask_slice, sample_mask[slice_index])
+
+
+def test_render_prediction_displays_selected_axial_slices(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    sample_prediction: np.ndarray,
+) -> None:
+    """Prediction rendering displays data from the selected image slice."""
+    slice_index = 4
+    figure = visualizer.render_prediction(
+        sample_volume,
+        sample_prediction,
+        slice_index,
+    )
+    image_slice = figure.axes[0].get_images()[0].get_array()
+    prediction_slice = figure.axes[1].get_images()[0].get_array()
+
+    assert np.array_equal(image_slice, sample_volume[slice_index])
+    assert np.array_equal(prediction_slice, sample_prediction[slice_index])
+
+
+def test_render_overlay_creates_image_and_prediction_artists(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    sample_prediction: np.ndarray,
+) -> None:
+    """Overlay rendering layers one grayscale image and one prediction image."""
+    figure = visualizer.render_overlay(sample_volume, sample_prediction, 4)
+    overlay_images = figure.axes[1].get_images()
+
+    assert len(overlay_images) == 2
+    assert overlay_images[0].get_cmap().name == "gray"
+    assert overlay_images[1].get_cmap().name == "Reds"
+
+
+@pytest.mark.parametrize(
+    ("plane", "slice_index"),
+    [
+        (VolumePlane.CORONAL, 12),
+        (VolumePlane.SAGITTAL, 20),
+    ],
+)
+def test_render_mask_supports_non_axial_planes(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    sample_mask: np.ndarray,
+    plane: VolumePlane,
+    slice_index: int,
+) -> None:
+    """Mask rendering supports coronal and sagittal anatomical planes."""
+    figure = visualizer.render_mask(sample_volume, sample_mask, slice_index, plane)
+
+    assert isinstance(figure, Figure)
+    assert len(figure.axes) == 2
+
+
+@pytest.mark.parametrize(
+    ("plane", "slice_index"),
+    [
+        (VolumePlane.CORONAL, 12),
+        (VolumePlane.SAGITTAL, 20),
+    ],
+)
+def test_render_prediction_supports_non_axial_planes(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    sample_prediction: np.ndarray,
+    plane: VolumePlane,
+    slice_index: int,
+) -> None:
+    """Prediction rendering supports coronal and sagittal anatomical planes."""
+    figure = visualizer.render_prediction(
+        sample_volume,
+        sample_prediction,
+        slice_index,
+        plane,
+    )
+
+    assert isinstance(figure, Figure)
+    assert len(figure.axes) == 2
+
+
+@pytest.mark.parametrize(
+    ("plane", "slice_index"),
+    [
+        (VolumePlane.CORONAL, 12),
+        (VolumePlane.SAGITTAL, 20),
+    ],
+)
+def test_render_overlay_supports_non_axial_planes(
+    visualizer: VolumeVisualizer,
+    sample_volume: np.ndarray,
+    sample_prediction: np.ndarray,
+    plane: VolumePlane,
+    slice_index: int,
+) -> None:
+    """Overlay rendering supports coronal and sagittal anatomical planes."""
+    figure = visualizer.render_overlay(
+        sample_volume,
+        sample_prediction,
+        slice_index,
+        plane,
+    )
+
+    assert isinstance(figure, Figure)
+    assert len(figure.axes) == 2
