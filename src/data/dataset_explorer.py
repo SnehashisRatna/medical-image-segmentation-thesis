@@ -18,7 +18,6 @@ Project: Medical Image Segmentation Thesis
 
 from pathlib import Path
 import matplotlib.pyplot as plt
-import numpy as np
 from src.data.dicom_reader import DICOMReader
 
 class DatasetExplorer:

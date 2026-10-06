@@ -199,7 +199,7 @@ class TestOutputContracts:
             dicom_reader=_mock_ct_reader(shape=(512, 512)),
             mask_reader=_mock_binary_mask_reader(shape=(512, 512)),
         )
-        image, _ = ds[0]
+        image, _, _ = ds[0]
         assert image.shape == (1, 512, 512)
 
     def test_mri_image_shape_one_h_w(self) -> None:
@@ -212,7 +212,7 @@ class TestOutputContracts:
             dicom_reader=reader,
             mask_reader=_mock_mask_reader(shape=(256, 256)),
         )
-        image, _ = ds[0]
+        image, _, _ = ds[0]
         assert image.shape == (1, 256, 256)
 
     def test_mask_shape_h_w(self) -> None:
@@ -223,7 +223,7 @@ class TestOutputContracts:
             dicom_reader=_mock_ct_reader(shape=(512, 512)),
             mask_reader=_mock_binary_mask_reader(shape=(512, 512)),
         )
-        _, mask = ds[0]
+        _, mask, _ = ds[0]
         assert mask.shape == (512, 512)
 
     def test_image_dtype_is_float32(self) -> None:
@@ -234,7 +234,7 @@ class TestOutputContracts:
             dicom_reader=_mock_ct_reader(),
             mask_reader=_mock_binary_mask_reader(),
         )
-        image, _ = ds[0]
+        image, _, _ = ds[0]
         assert image.dtype == torch.float32
 
     def test_mask_dtype_is_torch_long(self) -> None:
@@ -245,7 +245,7 @@ class TestOutputContracts:
             dicom_reader=_mock_ct_reader(),
             mask_reader=_mock_binary_mask_reader(),
         )
-        _, mask = ds[0]
+        _, mask, _ = ds[0]
         assert mask.dtype == torch.long
 
     def test_mask_values_only_zero_and_one(self) -> None:
@@ -263,7 +263,7 @@ class TestOutputContracts:
             dicom_reader=reader,
             mask_reader=mask_reader,
         )
-        _, mask = ds[0]
+        _, mask, _ = ds[0]
         unique = set(mask.flatten().tolist())
         assert unique.issubset({0, 1})
 
@@ -334,7 +334,7 @@ class TestMriVolumeStats:
         assert abs(cached_std - expected_std) < 1e-4
 
         # Normalize slice 1 using volume stats → pixel[0,0] = 100
-        image1, _ = ds[0]
+        image1, _, _ = ds[0]
         expected_px = (100.0 - expected_mean) / (expected_std + 1e-6)
         actual_px = float(image1[0, 0, 0])
         assert abs(actual_px - expected_px) < 1e-4, (
@@ -402,8 +402,8 @@ class TestAugmentationFlag:
             [sample], augment=False,
             dicom_reader=reader, mask_reader=mask_reader,
         )
-        img1, mask1 = ds[0]
-        img2, mask2 = ds[0]
+        img1, mask1, _ = ds[0]
+        img2, mask2, _ = ds[0]
 
         assert torch.equal(img1, img2)
         assert torch.equal(mask1, mask2)

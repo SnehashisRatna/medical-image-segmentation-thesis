@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.so
+*.egg-info/
 
 # Virtual Environment
 .venv/
@@ -33,6 +34,8 @@ results/
 # Python cache
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.tmp*/
 
 # OS
 .DS_Store

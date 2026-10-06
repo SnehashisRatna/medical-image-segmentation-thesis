@@ -54,24 +54,55 @@ def _add_mr_patient(
     )
 
 
-def test_indexes_ct_with_stem_matched_masks_and_spatial_order(tmp_path: Path) -> None:
-    _add_acquisition(
-        tmp_path / "CT" / "1" / "DICOM_anon",
-        tmp_path / "CT" / "1" / "Ground",
-        ["slice-b", "slice-a"],
-    )
+def test_indexes_ct_with_standard_filenames_and_spatial_order(tmp_path: Path) -> None:
+    dicom_dir = tmp_path / "CT" / "1" / "DICOM_anon"
+    ground_dir = tmp_path / "CT" / "1" / "Ground"
+    ground_dir.mkdir(parents=True)
+
+    # Spatial Z=0.0 -> InstanceNumber=2 -> Mask liver_GT_001.png
+    _write_dicom(dicom_dir / "i0005,0000b.dcm", instance=2, z=0.0)
+    (ground_dir / "liver_GT_001.png").touch()
+
+    # Spatial Z=1.0 -> InstanceNumber=1 -> Mask liver_GT_000.png
+    _write_dicom(dicom_dir / "i0002,0000b.dcm", instance=1, z=1.0)
+    (ground_dir / "liver_GT_000.png").touch()
 
     samples = DatasetIndexer(tmp_path).index()
 
     assert [sample.patient_id for sample in samples] == ["1", "1"]
     assert [sample.modality for sample in samples] == [Modality.CT, Modality.CT]
     assert [sample.sequence for sample in samples] == ["CT", "CT"]
-    assert [sample.image_path.stem for sample in samples] == ["slice-b", "slice-a"]
+    # Spatial sort orders by z=0.0 then z=1.0
+    assert [sample.image_path.stem for sample in samples] == ["i0005,0000b", "i0002,0000b"]
+    # Masks matched by InstanceNumber-1
     assert [sample.mask_path.stem for sample in samples if sample.mask_path] == [
-        "slice-b",
-        "slice-a",
+        "liver_GT_001",
+        "liver_GT_000",
     ]
     assert [sample.slice_index for sample in samples] == [0, 1]
+
+
+def test_indexes_ct_with_img_filenames_and_reversed_z_order(tmp_path: Path) -> None:
+    dicom_dir = tmp_path / "CT" / "21" / "DICOM_anon"
+    ground_dir = tmp_path / "CT" / "21" / "Ground"
+    ground_dir.mkdir(parents=True)
+
+    # Spatial Z=10.0 (high z, sorted last) -> Instance=1 -> liver_GT_000.png
+    _write_dicom(dicom_dir / "IMG-0001-00001.dcm", instance=1, z=10.0)
+    (ground_dir / "liver_GT_000.png").touch()
+
+    # Spatial Z=5.0 (low z, sorted first) -> Instance=2 -> liver_GT_001.png
+    _write_dicom(dicom_dir / "IMG-0001-00002.dcm", instance=2, z=5.0)
+    (ground_dir / "liver_GT_001.png").touch()
+
+    samples = DatasetIndexer(tmp_path).index()
+
+    # Z-order sort: Z=5.0 (Instance 2) then Z=10.0 (Instance 1)
+    assert [sample.image_path.stem for sample in samples] == ["IMG-0001-00002", "IMG-0001-00001"]
+    assert [sample.mask_path.stem for sample in samples if sample.mask_path] == [
+        "liver_GT_001",
+        "liver_GT_000",
+    ]
 
 
 def test_indexes_mri_sequences_without_collapsing_t1_phases(tmp_path: Path) -> None:
@@ -127,21 +158,86 @@ def test_rejects_missing_expected_structure(tmp_path: Path) -> None:
         DatasetIndexer(tmp_path).index()
 
 
-def test_rejects_missing_mask_in_labeled_acquisition(tmp_path: Path) -> None:
+def test_rejects_missing_mask_in_labeled_ct_acquisition(tmp_path: Path) -> None:
     dicom = tmp_path / "CT" / "1" / "DICOM_anon"
     ground = tmp_path / "CT" / "1" / "Ground"
-    _add_acquisition(dicom, ground, ["present"])
-    _write_dicom(dicom / "missing.dcm", instance=30, z=4.0)
+    ground.mkdir(parents=True)
+    _write_dicom(dicom / "i0001,0000b.dcm", instance=1, z=0.0)
+    (ground / "liver_GT_000.png").touch()
 
-    with pytest.raises(DatasetIndexError, match="Missing expected mask"):
+    _write_dicom(dicom / "i0002,0000b.dcm", instance=2, z=1.0)
+    # Missing liver_GT_001.png for Instance 2 (mask index 1)
+
+    with pytest.raises(DatasetIndexError, match="Missing masks for CT DICOM slice numbers: \\[1\\]"):
         DatasetIndexer(tmp_path).index()
 
 
-def test_rejects_orphan_mask_in_labeled_acquisition(tmp_path: Path) -> None:
+def test_rejects_orphan_mask_in_labeled_ct_acquisition(tmp_path: Path) -> None:
     dicom = tmp_path / "CT" / "1" / "DICOM_anon"
     ground = tmp_path / "CT" / "1" / "Ground"
-    _add_acquisition(dicom, ground, ["present"])
-    (ground / "orphan.png").touch()
+    ground.mkdir(parents=True)
+    _write_dicom(dicom / "i0001,0000b.dcm", instance=1, z=0.0)
+    (ground / "liver_GT_000.png").touch()
 
-    with pytest.raises(DatasetIndexError, match="no corresponding DICOM image"):
+    (ground / "liver_GT_001.png").touch() # Orphan mask index 1
+
+    with pytest.raises(DatasetIndexError, match="Extra masks found without corresponding CT DICOMs for slice numbers: \\[1\\]"):
+        DatasetIndexer(tmp_path).index()
+
+
+def test_rejects_invalid_ct_mask_filename(tmp_path: Path) -> None:
+    dicom = tmp_path / "CT" / "1" / "DICOM_anon"
+    ground = tmp_path / "CT" / "1" / "Ground"
+    ground.mkdir(parents=True)
+    _write_dicom(dicom / "i0001,0000b.dcm", instance=1, z=0.0)
+    (ground / "invalid.png").touch()
+
+    with pytest.raises(DatasetIndexError, match="Unexpected CT mask filename format: invalid"):
+        DatasetIndexer(tmp_path).index()
+
+
+def test_rejects_duplicate_instance_number(tmp_path: Path) -> None:
+    dicom = tmp_path / "CT" / "1" / "DICOM_anon"
+    ground = tmp_path / "CT" / "1" / "Ground"
+    ground.mkdir(parents=True)
+    _write_dicom(dicom / "i0001,0000b.dcm", instance=1, z=0.0)
+    _write_dicom(dicom / "i0002,0000b.dcm", instance=1, z=1.0)  # Duplicate InstanceNumber
+    (ground / "liver_GT_000.png").touch()
+
+    with pytest.raises(DatasetIndexError, match="Duplicate mask index 0 derived from InstanceNumber"):
+        DatasetIndexer(tmp_path).index()
+
+
+def test_rejects_duplicate_mask_index(tmp_path: Path) -> None:
+    dicom = tmp_path / "CT" / "1" / "DICOM_anon"
+    ground = tmp_path / "CT" / "1" / "Ground"
+    ground.mkdir(parents=True)
+    _write_dicom(dicom / "i0001,0000b.dcm", instance=1, z=0.0)
+    (ground / "liver_GT_000.png").touch()
+    (ground / "liver_GT_00.png").touch() # Evaluates to mask index 0 too
+
+    with pytest.raises(DatasetIndexError, match="Duplicate mask slice number 0 in CT acquisition"):
+        DatasetIndexer(tmp_path).index()
+
+
+def test_rejects_missing_instance_number(tmp_path: Path) -> None:
+    dicom = tmp_path / "CT" / "1" / "DICOM_anon"
+    ground = tmp_path / "CT" / "1" / "Ground"
+    ground.mkdir(parents=True)
+
+    # Write DICOM without InstanceNumber
+    path = dicom / "i0001,0000b.dcm"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    meta = FileMetaDataset()
+    meta.MediaStorageSOPClassUID = pydicom.uid.SecondaryCaptureImageStorage
+    meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
+    meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+    dataset = FileDataset(str(path), {}, file_meta=meta, preamble=b"\x00" * 128)
+    dataset.ImagePositionPatient = [0.0, 0.0, 0.0]
+    dataset.ImageOrientationPatient = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    dataset.save_as(path, enforce_file_format=True)
+
+    (ground / "liver_GT_000.png").touch()
+
+    with pytest.raises(DatasetIndexError, match="Missing InstanceNumber in CT DICOM"):
         DatasetIndexer(tmp_path).index()

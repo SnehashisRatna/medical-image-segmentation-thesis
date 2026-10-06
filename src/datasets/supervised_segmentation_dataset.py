@@ -151,7 +151,7 @@ class SupervisedSegmentationDataset(Dataset):
         """Return the number of labeled (supervised) samples."""
         return len(self._samples)
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, Sample]:
         """Load, preprocess, and optionally augment one sample.
 
         Parameters
@@ -161,10 +161,11 @@ class SupervisedSegmentationDataset(Dataset):
 
         Returns
         -------
-        tuple[torch.Tensor, torch.Tensor]
+        tuple[torch.Tensor, torch.Tensor, Sample]
             * **image** — shape ``[1, H, W]``, dtype ``torch.float32``
             * **mask**  — shape ``[H, W]``,    dtype ``torch.long``,
               values in ``{0, 1}``
+            * **sample** — The underlying :class:`~src.datasets.sample.Sample`
 
         Notes
         -----
@@ -211,4 +212,4 @@ class SupervisedSegmentationDataset(Dataset):
         if self._augmentation is not None:
             image_tensor, mask_tensor = self._augmentation(image_tensor, mask_tensor)
 
-        return image_tensor, mask_tensor
+        return image_tensor, mask_tensor, sample

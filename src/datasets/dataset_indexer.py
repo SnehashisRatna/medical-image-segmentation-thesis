@@ -148,23 +148,74 @@ class DatasetIndexer:
             if ground_directory is not None and ground_directory.exists()
             else None
         )
-        if masks is not None:
-            image_stems = {image.stem.casefold() for image in images}
-            orphan_stems = sorted(set(masks) - image_stems)
-            if orphan_stems:
-                raise DatasetIndexError(
-                    "Ground mask has no corresponding DICOM image in labeled acquisition "
-                    f"{dicom_directory}: {orphan_stems[0]!r}."
-                )
         ordered_images = self._order_slices(images)
+
+        ct_mask_mapping: dict[Path, Path] | None = None
+        if masks is not None:
+            if modality == Modality.CT:
+                ct_image_numbers: dict[int, Path] = {}
+                for dicom_slice in ordered_images:
+                    if dicom_slice.instance_number is None:
+                        raise DatasetIndexError(
+                            f"Missing InstanceNumber in CT DICOM: {dicom_slice.path}"
+                        )
+                    mask_index = dicom_slice.instance_number - 1
+                    if mask_index in ct_image_numbers:
+                        raise DatasetIndexError(f"Duplicate mask index {mask_index} derived from InstanceNumber in CT acquisition.")
+                    ct_image_numbers[mask_index] = dicom_slice.path
+
+                ct_mask_numbers: dict[int, Path] = {}
+                for stem, path in masks.items():
+                    if not stem.startswith("liver_gt_"):
+                        raise DatasetIndexError(f"Unexpected CT mask filename format: {stem}")
+                    try:
+                        num = int(stem[9:])
+                    except ValueError:
+                        raise DatasetIndexError(f"Cannot extract slice number from CT mask: {stem}")
+                    if num in ct_mask_numbers:
+                        raise DatasetIndexError(f"Duplicate mask slice number {num} in CT acquisition.")
+                    ct_mask_numbers[num] = path
+
+                missing_masks = set(ct_image_numbers.keys()) - set(ct_mask_numbers.keys())
+                if missing_masks:
+                    raise DatasetIndexError(
+                        f"Missing masks for CT DICOM slice numbers: {sorted(missing_masks)}"
+                    )
+
+                extra_masks = set(ct_mask_numbers.keys()) - set(ct_image_numbers.keys())
+                if extra_masks:
+                    raise DatasetIndexError(
+                        f"Extra masks found without corresponding CT DICOMs for slice numbers: {sorted(extra_masks)}"
+                    )
+
+                ct_mask_mapping = {
+                    img_path: ct_mask_numbers[num]
+                    for num, img_path in ct_image_numbers.items()
+                }
+            else:
+                image_stems = {image.stem.casefold() for image in images}
+                orphan_stems = sorted(set(masks) - image_stems)
+                if orphan_stems:
+                    raise DatasetIndexError(
+                        "Ground mask has no corresponding DICOM image in labeled acquisition "
+                        f"{dicom_directory}: {orphan_stems[0]!r}."
+                    )
+
         samples: list[Sample] = []
         for slice_index, image in enumerate(ordered_images):
-            mask = None if masks is None else masks.get(image.path.stem.casefold())
-            if masks is not None and mask is None:
-                raise DatasetIndexError(
-                    "Missing expected mask for labeled image "
-                    f"{image.path} in {ground_directory}."
-                )
+            if masks is None:
+                mask = None
+            elif modality == Modality.CT:
+                assert ct_mask_mapping is not None
+                mask = ct_mask_mapping[image.path]
+            else:
+                mask = masks.get(image.path.stem.casefold())
+                if mask is None:
+                    raise DatasetIndexError(
+                        "Missing expected mask for labeled image "
+                        f"{image.path} in {ground_directory}."
+                    )
+
             samples.append(
                 Sample(patient_id, modality, sequence, image.path, mask, slice_index)
             )

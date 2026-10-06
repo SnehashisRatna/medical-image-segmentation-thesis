@@ -7,6 +7,22 @@ name = "medical-image-segmentation-thesis"
 version = "0.1.0"
 description = "Medical Image Segmentation Research Framework"
 requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.0",
+    "torchvision",
+    "numpy",
+    "Pillow",
+    "pydicom",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+vis = [
+    "matplotlib",
+]
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -19,3 +35,7 @@ include = ["src*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 python_files = ["test_*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]

@@ -23,15 +23,13 @@ Medical Image Segmentation Thesis
 """
 
 from pathlib import Path
-
-import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
 from src.data.types.mask_statistics import MaskStatistics
 
 class GroundTruthReader:
-   
+
     """
     Read and analyze segmentation masks.
 
