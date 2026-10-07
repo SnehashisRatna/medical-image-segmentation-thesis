@@ -33,17 +33,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--modality", type=str, choices=["CT", "MRI"], required=True, help="Target modality (CT or MRI).")
     parser.add_argument("--sequence", type=str, required=True, help="Target sequence (e.g., 'CT', 'T1DUAL/InPhase', 'T2SPIR').")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size for training and validation.")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of epochs to train.")
+    parser.add_argument("--epochs", type=int, default=100, help="Total number of epochs to train (when resuming, the total target epoch, not additional epochs).")
     parser.add_argument("--learning-rate", type=float, default=1e-4, help="Learning rate for Adam.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
     parser.add_argument("--num-workers", type=int, default=4, help="Number of subprocesses for data loading.")
     parser.add_argument("--device", type=str, default="auto", help="Compute device ('auto', 'cuda', 'cpu').")
+    parser.add_argument("--resume", type=Path, default=None, help="Path to a checkpoint (e.g., latest_model.pt) to resume training from.")
 
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+
+    if args.resume is not None and not args.resume.is_file():
+        logger.error(f"Resume checkpoint not found: {args.resume}")
+        sys.exit(1)
 
     # 1. Reproducibility
     set_seed(args.seed)
@@ -144,6 +149,10 @@ def main() -> None:
         optimizer=optimizer,
         config=config,
     )
+
+    # Optionally restore model/optimizer/RNG/history state from a checkpoint
+    if args.resume is not None:
+        trainer.resume_from_checkpoint(args.resume)
 
     # 8. Run Experiment
     logger.info("Starting formal training...")

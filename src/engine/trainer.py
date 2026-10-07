@@ -13,7 +13,7 @@ from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
 from src.core.config import ExperimentConfig
-from src.engine.checkpoint import save_checkpoint
+from src.engine.checkpoint import load_checkpoint, save_checkpoint
 from src.metrics.tracker import SegmentationMetricTracker
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,8 @@ class Trainer:
         self.model.to(self.device)
 
         self.metric_tracker = SegmentationMetricTracker()
+        # First epoch to run; ``config.epochs`` is the total (inclusive) target.
+        self.start_epoch = 1
         self.best_metric = 0.0
         self.training_history: dict[str, list[float]] = {
             "train_loss": [],
@@ -74,6 +76,57 @@ class Trainer:
             "val_dice": [],
             "val_iou": [],
         }
+
+    def resume_from_checkpoint(self, path: str | Path) -> int:
+        """Restore training state from a checkpoint to continue training.
+
+        Restores model weights, optimizer state, scheduler state (if a
+        scheduler is configured), RNG states (if stored in the checkpoint),
+        the best metric, and the training history. Training will continue at
+        ``checkpoint_epoch + 1`` up to ``config.epochs`` (the total target).
+
+        Parameters
+        ----------
+        path : str | Path
+            Path to a checkpoint produced by :func:`save_checkpoint`.
+
+        Returns
+        -------
+        int
+            The epoch at which training will resume.
+        """
+        metadata = load_checkpoint(
+            path=path,
+            model=self.model,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            restore_rng=True,
+        )
+
+        completed_epoch = int(metadata["epoch"])
+        self.start_epoch = completed_epoch + 1
+        self.best_metric = float(metadata["best_metric"])
+
+        restored_history = {
+            key: list(values) for key, values in metadata["training_history"].items()
+        }
+        for key in self.training_history:
+            restored_history.setdefault(key, [])
+        self.training_history = restored_history
+
+        logger.info(
+            f"Resumed from checkpoint {path} (completed epoch {completed_epoch}, "
+            f"best Dice {self.best_metric:.4f}, "
+            f"RNG restored: {metadata['rng_state_restored']}). "
+            f"Continuing at epoch {self.start_epoch}/{self.config.epochs}."
+        )
+        if self.start_epoch > self.config.epochs:
+            logger.warning(
+                f"Checkpoint epoch {completed_epoch} already reaches the target of "
+                f"{self.config.epochs} epochs; no further training will be run."
+            )
+
+        return self.start_epoch
 
     def train_epoch(self) -> float:
         """Execute one full pass over the training dataset.
@@ -144,7 +197,7 @@ class Trainer:
         logger.info(f"Starting training on device {self.device}")
         output_dir = Path(self.config.output_dir)
 
-        for epoch in range(1, self.config.epochs + 1):
+        for epoch in range(self.start_epoch, self.config.epochs + 1):
             train_loss = self.train_epoch()
             val_metrics = self.validate_epoch()
 
